@@ -66,6 +66,10 @@ const CONFIG = {
     BANNER_HEIGHT_RATIO: 0.14,
     FONT_SIZE_RATIO: 0.035,
   },
+  COUNTDOWN: {
+    START: 3,
+    INTERVAL: 1000,
+  }
 };
 
 const GPS_ERROR_MESSAGES = {
@@ -77,6 +81,7 @@ const GPS_ERROR_MESSAGES = {
 const UI_CLASSES = {
   GPS_SUCCESS: "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20",
   GPS_ERROR: "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-400 border border-rose-500/20",
+  TOAST_BASE: "p-3 rounded-xl border shadow-xl backdrop-blur-md text-xs flex items-center gap-2.5 transition-all duration-300 pointer-events-auto mb-2",
 };
 
 // ============================================================================
@@ -113,6 +118,18 @@ function getElement(id) {
     console.warn(`Element with ID "${id}" not found`);
   }
   return elem;
+}
+
+/**
+ * Safely get multiple DOM elements by IDs
+ * @param {...string} ids - Element IDs
+ * @returns {Object} Object with id as key and element as value
+ */
+function getElements(...ids) {
+  return ids.reduce((acc, id) => {
+    acc[id] = getElement(id);
+    return acc;
+  }, {});
 }
 
 /**
@@ -156,6 +173,19 @@ function playAudioBeep(freq = 600, type = 'sine', duration = 0.12) {
 }
 
 /**
+ * Schedule toast removal with fade animation
+ * @param {HTMLElement} toast - Toast element
+ * @param {number} duration - Display duration in ms
+ */
+function scheduleToastRemoval(toast, duration = CONFIG.UI.TOAST_DURATION_MS) {
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateY(-10px)';
+    setTimeout(() => toast.remove(), CONFIG.UI.TOAST_FADE_DURATION_MS);
+  }, duration);
+}
+
+/**
  * Custom Toast Notification System with accessibility
  * @param {string} message - Toast message text
  * @param {string} type - Toast type (info, success, error, warning)
@@ -187,18 +217,13 @@ function showToast(message, type = 'info') {
 
   const config = toastConfig[type] || toastConfig.info;
 
-  toast.className = `p-3 rounded-xl border ${config.bg} shadow-xl backdrop-blur-md text-xs flex items-center gap-2.5 transition-all duration-300 pointer-events-auto mb-2`;
+  toast.className = `${UI_CLASSES.TOAST_BASE} ${config.bg}`;
   toast.setAttribute('role', 'alert');
   toast.setAttribute('aria-live', 'polite');
   toast.innerHTML = `<i class="fa-solid ${config.icon} text-sm" aria-hidden="true"></i> <span>${message}</span>`;
   
   container.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transform = 'translateY(-10px)';
-    setTimeout(() => toast.remove(), CONFIG.UI.TOAST_FADE_DURATION_MS);
-  }, CONFIG.UI.TOAST_DURATION_MS);
+  scheduleToastRemoval(toast);
 }
 
 // ============================================================================
@@ -210,8 +235,7 @@ function showToast(message, type = 'info') {
  * @param {boolean} isManualRefresh - Whether this is a manual refresh request
  */
 function initGPS(isManualRefresh = false) {
-  const pill = getElement('gps-status-pill');
-  const pillText = getElement('gps-status-text');
+  const { 'gps-status-pill': pill, 'gps-status-text': pillText } = getElements('gps-status-pill', 'gps-status-text');
 
   if (!navigator.geolocation) {
     if (pillText) pillText.innerText = "GPS Tidak Didukung";
@@ -315,39 +339,41 @@ function stopCameraStream() {
 }
 
 /**
- * Get media stream with fallback options
+ * Get media stream with fallback options using constraint chain
  * @param {string} facingMode - Camera facing mode (user, environment)
  * @returns {Promise<MediaStream>}
  */
 async function getMediaStream(facingMode) {
-  try {
-    return await navigator.mediaDevices.getUserMedia({
-      video: { 
+  const constraints = [
+    {
+      video: {
         facingMode,
         width: { ideal: CONFIG.CAMERA.IDEAL_WIDTH },
         height: { ideal: CONFIG.CAMERA.IDEAL_HEIGHT }
       },
       audio: false
-    });
-  } catch (primaryError) {
-    console.debug(`Camera with facingMode ${facingMode} failed, trying fallback:`, primaryError);
-    
+    },
+    {
+      video: { facingMode },
+      audio: false
+    },
+    {
+      video: true,
+      audio: false
+    }
+  ];
+
+  for (const constraint of constraints) {
     try {
-      // Fallback: Try without exact facing mode
-      return await navigator.mediaDevices.getUserMedia({
-        video: { facingMode },
-        audio: false
-      });
-    } catch (secondaryError) {
-      console.debug('Secondary camera attempt failed, using generic access:', secondaryError);
-      
-      // Final fallback: Generic video access
-      return await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: false
-      });
+      console.debug(`Attempting getUserMedia with constraint:`, constraint);
+      return await navigator.mediaDevices.getUserMedia(constraint);
+    } catch (error) {
+      console.debug(`Constraint failed, trying next:`, error.message);
+      continue;
     }
   }
+
+  throw new Error('No camera access available - all constraints failed');
 }
 
 /**
@@ -436,18 +462,41 @@ async function initializeVideoStream(videoElem, facingMode) {
 // ============================================================================
 
 /**
- * 2. Automated One-Click Attendance Flow
+ * Validate form inputs for attendance
+ * @returns {boolean} true if valid
  */
-async function startAutomatedAttendance() {
-  const nama = getElement('input-nama')?.value.trim() || '';
-  const nim = getElement('input-nim')?.value.trim() || '';
+function validateAttendanceInputs() {
+  const nama = getElement('input-nama')?.value?.trim() ?? '';
+  const nim = getElement('input-nim')?.value?.trim() ?? '';
   
   if (!nama || !nim) {
     showToast("Mohon isi Nama Lengkap & NIM peserta!", "warning");
     if (!nama) getElement('input-nama')?.focus();
     else if (!nim) getElement('input-nim')?.focus();
-    return;
+    return false;
   }
+  
+  return true;
+}
+
+/**
+ * Get current form input values
+ * @returns {Object} Object with nama and nim
+ */
+function getAttendanceInputs() {
+  return {
+    nama: getElement('input-nama')?.value?.trim() ?? '',
+    nim: getElement('input-nim')?.value?.trim() ?? ''
+  };
+}
+
+/**
+ * Automated One-Click Attendance Flow
+ */
+async function startAutomatedAttendance() {
+  if (!validateAttendanceInputs()) return;
+
+  const { nama, nim } = getAttendanceInputs();
 
   if (!currentGPS) {
     showToast("Mendapatkan koordinat GPS lokasi Anda...", "info");
@@ -465,13 +514,13 @@ async function startAutomatedAttendance() {
 
   try {
     // TAHAP 1: Kamera Depan (Selfie Peserta)
-    await processFrontCameraStep(nama, nim);
+    await processCameraStep(1, 'user', "Foto Selfie Peserta", "Selfie Peserta", nama, nim);
 
     // TAHAP 2: Aba-aba & Countdown Putar HP
     await processFlipDeviceCountdownStep();
 
     // TAHAP 3: Kamera Belakang (Suasana Acara)
-    await processRearCameraStep(nama, nim);
+    await processCameraStep(2, 'environment', "Foto Suasana Acara", "Suasana Acara", nama, nim);
 
     // TAHAP 4: Selesai & Tampilkan Hasil
     finishAttendanceProcess(nama, nim);
@@ -483,32 +532,50 @@ async function startAutomatedAttendance() {
 }
 
 /**
- * Step 1: Process Front Selfie Camera
+ * Process camera capture step (unified for front and rear)
+ * @param {number} stepNumber - Step number (1 or 2)
+ * @param {string} facingMode - Camera facing mode ('user' or 'environment')
+ * @param {string} stepTitle - Title to display
+ * @param {string} watermarkLabel - Label for watermark
  * @param {string} nama - User name
  * @param {string} nim - User NIM
  */
-async function processFrontCameraStep(nama, nim) {
-  updateStatus('step-badge', "Langkah 1/2");
-  updateStatus('step-title', "Foto Selfie Peserta");
+async function processCameraStep(stepNumber, facingMode, stepTitle, watermarkLabel, nama, nim) {
+  updateStatus('step-badge', `Langkah ${stepNumber}/2`);
+  updateStatus('step-title', stepTitle);
   
-  const guideF = getElement('overlay-guide-front');
-  const guideR = getElement('overlay-guide-rear');
-  if (guideF) guideF.classList.remove('hidden');
-  if (guideR) guideR.classList.add('hidden');
+  const { 'overlay-guide-front': guideF, 'overlay-guide-rear': guideR } = getElements('overlay-guide-front', 'overlay-guide-rear');
+  
+  // Show appropriate guide
+  const isFront = facingMode === 'user';
+  if (guideF) guideF.classList.toggle('hidden', !isFront);
+  if (guideR) guideR.classList.toggle('hidden', isFront);
 
-  updateStatus('camera-status-text', "Membuka Kamera Depan...");
+  const cameraLabel = isFront ? "Depan" : "Belakang";
+  updateStatus('camera-status-text', `Membuka Kamera ${cameraLabel}...`);
 
   const videoElem = getElement('camera-video');
   if (!videoElem) throw new Error('Camera video element not found');
 
-  await initializeVideoStream(videoElem, 'user');
+  await initializeVideoStream(videoElem, facingMode);
 
-  updateStatus('camera-status-text', "Tersenyum & Posisikan Wajah... (1.5 detik)");
+  const instructionText = isFront 
+    ? "Tersenyum & Posisikan Wajah... (1.5 detik)" 
+    : "Arahkan ke Ruangan Acara... (1.5 detik)";
+  
+  updateStatus('camera-status-text', instructionText);
   await delay(CONFIG.CAMERA.DELAY_MS);
 
   triggerFlashEffect();
-  frontImageBase64 = captureVideoFrame(videoElem, "Selfie Peserta", nama, nim);
   
+  const imageBase64 = captureVideoFrame(videoElem, watermarkLabel, nama, nim);
+  
+  if (isFront) {
+    frontImageBase64 = imageBase64;
+  } else {
+    rearImageBase64 = imageBase64;
+  }
+
   stopCameraStream();
 }
 
@@ -524,44 +591,14 @@ async function processFlipDeviceCountdownStep() {
   
   flipOverlay.classList.remove('hidden');
 
-  for (let i = 3; i >= 1; i--) {
+  for (let i = CONFIG.COUNTDOWN.START; i >= 1; i--) {
     circleText.innerText = i;
     playAudioBeep(CONFIG.AUDIO.COUNTDOWN_FREQ, CONFIG.AUDIO.COUNTDOWN_TYPE, CONFIG.AUDIO.COUNTDOWN_DURATION);
-    await delay(1000);
+    await delay(CONFIG.COUNTDOWN.INTERVAL);
   }
 
   playAudioBeep(CONFIG.AUDIO.DONE_FREQ, CONFIG.AUDIO.BEEP_TYPE, CONFIG.AUDIO.DONE_DURATION);
   flipOverlay.classList.add('hidden');
-}
-
-/**
- * Step 3: Process Rear Environment Camera
- * @param {string} nama - User name
- * @param {string} nim - User NIM
- */
-async function processRearCameraStep(nama, nim) {
-  updateStatus('step-badge', "Langkah 2/2");
-  updateStatus('step-title', "Foto Suasana Acara");
-  
-  const guideF = getElement('overlay-guide-front');
-  const guideR = getElement('overlay-guide-rear');
-  if (guideF) guideF.classList.add('hidden');
-  if (guideR) guideR.classList.remove('hidden');
-
-  updateStatus('camera-status-text', "Membuka Kamera Belakang...");
-
-  const videoElem = getElement('camera-video');
-  if (!videoElem) throw new Error('Camera video element not found');
-
-  await initializeVideoStream(videoElem, 'environment');
-
-  updateStatus('camera-status-text', "Arahkan ke Ruangan Acara... (1.5 detik)");
-  await delay(CONFIG.CAMERA.DELAY_MS);
-
-  triggerFlashEffect();
-  rearImageBase64 = captureVideoFrame(videoElem, "Suasana Acara", nama, nim);
-
-  stopCameraStream();
 }
 
 /**
@@ -570,9 +607,8 @@ async function processRearCameraStep(nama, nim) {
  */
 function abortCameraProcess(reasonMsg) {
   stopCameraStream();
-  const modal = getElement('camera-modal');
+  const { 'camera-modal': modal, 'flip-countdown-overlay': flip } = getElements('camera-modal', 'flip-countdown-overlay');
   if (modal) modal.classList.add('hidden');
-  const flip = getElement('flip-countdown-overlay');
   if (flip) flip.classList.add('hidden');
   showToast(reasonMsg, "error");
 }
@@ -595,16 +631,16 @@ async function finishAttendanceProcess(nama, nim) {
     nim: nim,
     waktu: new Date(timestamp).toLocaleString('id-ID'),
     lokasi: {
-      lat: currentGPS ? currentGPS.latitude : 0,
-      lng: currentGPS ? currentGPS.longitude : 0
+      lat: currentGPS?.latitude ?? 0,
+      lng: currentGPS?.longitude ?? 0
     },
     fotoSelfie: frontImageBase64,
     fotoSuasana: rearImageBase64
   };
 
   // Populate Summary Results
-  const previewFront = getElement('preview-front');
-  const previewRear = getElement('preview-rear');
+  const { 'preview-front': previewFront, 'preview-rear': previewRear, 'result-card': resultCard } = getElements('preview-front', 'preview-rear', 'result-card');
+  
   if (previewFront) previewFront.src = frontImageBase64;
   if (previewRear) previewRear.src = rearImageBase64;
 
@@ -618,7 +654,6 @@ async function finishAttendanceProcess(nama, nim) {
   updateStatus('result-timestamp', `Waktu: ${new Date(timestamp).toLocaleString('id-ID')}`);
 
   // Display Result Card
-  const resultCard = getElement('result-card');
   if (resultCard) {
     resultCard.classList.remove('hidden');
     resultCard.scrollIntoView({ behavior: 'smooth' });
@@ -715,11 +750,9 @@ function resetAttendance() {
   frontImageBase64 = null;
   rearImageBase64 = null;
 
-  const resultCard = getElement('result-card');
-  if (resultCard) resultCard.classList.add('hidden');
+  const { 'result-card': resultCard, 'preview-front': previewFront, 'preview-rear': previewRear } = getElements('result-card', 'preview-front', 'preview-rear');
   
-  const previewFront = getElement('preview-front');
-  const previewRear = getElement('preview-rear');
+  if (resultCard) resultCard.classList.add('hidden');
   if (previewFront) previewFront.src = '';
   if (previewRear) previewRear.src = '';
   
@@ -769,9 +802,5 @@ function initializeApp() {
   initGPS();
 }
 
-// Prevent duplicate event listeners
-document.removeEventListener('DOMContentLoaded', initializeApp);
-window.removeEventListener('DOMContentLoaded', initializeApp);
-
-// Single initialization
+// Single initialization on DOM load
 window.addEventListener('DOMContentLoaded', initializeApp);
