@@ -1,0 +1,19 @@
+body {
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .flash-overlay {
+      animation: flash 0.3s ease-out;
+    }
+    @keyframes flash {
+      0% { opacity: 1; background-color: white; }
+      100% { opacity: 0; background-color: transparent; }
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
