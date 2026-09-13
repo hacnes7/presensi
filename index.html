@@ -85,7 +85,7 @@
               <i class="fa-solid fa-user"></i>
             </span>
             <input type="text" id="input-nama" placeholder="Masukkan Nama Lengkap Anda" 
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition" />
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition" />
           </div>
         </div>
 
@@ -97,7 +97,7 @@
               <i class="fa-solid fa-graduation-cap"></i>
             </span>
             <input type="text" id="input-nim" placeholder="Contoh: 2101012345" 
-              class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 transition" />
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 transition" />
           </div>
         </div>
       </div>
@@ -138,7 +138,7 @@
     <!-- MAIN ACTION BUTTON -->
     <section class="pt-1">
       <button id="btn-hadir" onclick="startAutomatedAttendance()" 
-        class="group relative w-full bg-gradient-to-r from-brand-600 via-indigo-600 to-accent-500 hover:from-brand-500 hover:to-accent-500 text-white font-extrabold text-lg py-4 px-6 rounded-2xl shadow-xl shadow-brand-500/20 active:scale-[0.98] transition-all duration-200 flex items-center justify-center gap-3">
+        class="group relative w-full bg-gradient-to-r from-brand-600 via-indigo-600 to-accent-500 hover:from-brand-500 hover:to-accent-500 text-white font-extrabold text-lg py-4 px-6 rounded-2xl shadow-lg shadow-brand-500/40 transition-all duration-300 hover:shadow-xl hover:shadow-brand-500/50 flex items-center gap-4 overflow-hidden">
         <span class="w-10 h-10 rounded-xl bg-white/10 backdrop-blur-md flex items-center justify-center group-hover:scale-110 transition-transform">
           <i class="fa-solid fa-camera text-white text-xl"></i>
         </span>
@@ -203,7 +203,7 @@
           <i class="fa-solid fa-code text-brand-400"></i> Inspeksi JSON Payload Data
         </button>
 
-        <button onclick="resetAttendance()" class="w-full py-2.5 bg-slate-800/50 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 border border-slate-800 transition">
+        <button onclick="resetAttendance()" class="w-full py-2.5 bg-slate-800/50 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition">
           <i class="fa-solid fa-rotate-left"></i> Presensi Ulang / Reset
         </button>
       </div>
@@ -253,11 +253,16 @@
       </div>
 
       <!-- On-Screen Status Alert Pill -->
-      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 border border-slate-700/80 text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 shadow-lg backdrop-blur-md whitespace-nowrap">
+      <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 border border-slate-700/80 text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 shadow-lg pointer-events-none">
         <i id="status-icon" class="fa-solid fa-spinner fa-spin text-brand-400"></i>
         <span id="camera-status-text">Mempersiapkan Kamera...</span>
       </div>
     </div>
+
+    <!-- Capture Photo Button -->
+    <button id="capture-photo-btn" style="display: none;" class="mx-auto mt-4 px-8 py-3 bg-gradient-to-r from-brand-600 to-accent-500 hover:from-brand-500 hover:to-accent-500 text-white font-bold rounded-xl shadow-lg transition-all duration-300 flex items-center gap-2">
+      <i class="fa-solid fa-camera"></i> Ambil Foto
+    </button>
 
     <!-- Switch Camera Flip Countdown Screen Overlay -->
     <div id="flip-countdown-overlay" class="absolute inset-0 z-20 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center hidden">
