@@ -723,17 +723,8 @@ async function processFlipDeviceCountdownStep() {
   const flipOverlay = getElement('flip-countdown-overlay');
   if (!flipOverlay) throw new Error('Flip countdown overlay not found');
 
-  const circleText = getElement('countdown-circle');
-  if (!circleText) throw new Error('Countdown circle element not found');
-  
   flipOverlay.classList.remove('hidden');
   hideCaptureButton();
-
-  for (let i = CONFIG.COUNTDOWN.START; i >= 1; i--) {
-    circleText.innerText = i;
-    playAudioBeep(CONFIG.AUDIO.COUNTDOWN_FREQ, CONFIG.AUDIO.COUNTDOWN_TYPE, CONFIG.AUDIO.COUNTDOWN_DURATION);
-    await delay(CONFIG.COUNTDOWN.INTERVAL);
-  }
 
   playAudioBeep(CONFIG.AUDIO.DONE_FREQ, CONFIG.AUDIO.BEEP_TYPE, CONFIG.AUDIO.DONE_DURATION);
   flipOverlay.classList.add('hidden');
