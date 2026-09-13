@@ -17,3 +17,8 @@ body {
       background: #334155;
       border-radius: 4px;
     }
+    
+    /* Remove mirror mode from front camera - normal display */
+    #camera-video {
+      transform: scaleX(1);
+    }
