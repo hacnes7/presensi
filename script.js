@@ -69,6 +69,9 @@ const CONFIG = {
   COUNTDOWN: {
     START: 3,
     INTERVAL: 1000,
+  },
+  DUPLICATE_CHECK: {
+    MINUTES: 5, // Cek duplikasi dalam 5 menit terakhir
   }
 };
 
@@ -325,6 +328,51 @@ function requestPermissions() {
 }
 
 // ============================================================================
+// DUPLICATE ATTENDANCE CHECK
+// ============================================================================
+
+/**
+ * Validasi duplikasi presensi dalam rentang waktu tertentu
+ * @param {Object} payload - Data presensi yang akan dikirim
+ * @returns {boolean} true jika data unik, false jika duplikasi
+ */
+function checkDuplicateAttendance(payload) {
+  const storedRecords = JSON.parse(localStorage.getItem('attendanceHistory') || '[]');
+  
+  const isDuplicate = storedRecords.some(record => {
+    const recordTime = new Date(record.waktu);
+    const currentTime = new Date(payload.waktu);
+    const timeDiff = Math.abs(currentTime - recordTime) / (1000 * 60); // dalam menit
+    
+    return record.nama === payload.nama && 
+           record.nim === payload.nim && 
+           timeDiff < CONFIG.DUPLICATE_CHECK.MINUTES;
+  });
+  
+  return !isDuplicate;
+}
+
+/**
+ * Simpan record presensi ke localStorage untuk pengecekan duplikasi
+ * @param {Object} payload - Data presensi
+ */
+function saveAttendanceRecord(payload) {
+  const records = JSON.parse(localStorage.getItem('attendanceHistory') || '[]');
+  records.push({
+    nama: payload.nama,
+    nim: payload.nim,
+    waktu: payload.waktu
+  });
+  
+  // Simpan hanya 100 record terakhir untuk menghemat storage
+  if (records.length > 100) {
+    records.shift();
+  }
+  
+  localStorage.setItem('attendanceHistory', JSON.stringify(records));
+}
+
+// ============================================================================
 // CAMERA OPERATIONS
 // ============================================================================
 
@@ -457,6 +505,55 @@ async function initializeVideoStream(videoElem, facingMode) {
   await videoElem.play();
 }
 
+/**
+ * Tampilkan tombol "Ambil Foto"
+ */
+function showCaptureButton() {
+  const captureBtn = getElement('capture-photo-btn');
+  if (captureBtn) {
+    captureBtn.style.display = 'block';
+    captureBtn.disabled = false;
+    captureBtn.innerText = "📷 Ambil Foto";
+  }
+}
+
+/**
+ * Sembunyikan tombol "Ambil Foto"
+ */
+function hideCaptureButton() {
+  const captureBtn = getElement('capture-photo-btn');
+  if (captureBtn) {
+    captureBtn.style.display = 'none';
+  }
+}
+
+/**
+ * Tunggu user mengklik tombol "Ambil Foto"
+ * @returns {Promise<void>}
+ */
+function waitForCaptureClick() {
+  return new Promise((resolve) => {
+    const captureBtn = getElement('capture-photo-btn');
+    if (!captureBtn) {
+      console.error('Capture button not found');
+      resolve();
+      return;
+    }
+
+    const handleClick = () => {
+      captureBtn.removeEventListener('click', handleClick);
+      captureBtn.disabled = true;
+      captureBtn.innerText = "⏳ Menyimpan...";
+      
+      setTimeout(() => {
+        resolve();
+      }, 500);
+    };
+
+    captureBtn.addEventListener('click', handleClick);
+  });
+}
+
 // ============================================================================
 // ATTENDANCE PROCESS STEPS
 // ============================================================================
@@ -527,12 +624,13 @@ async function startAutomatedAttendance() {
 
   } catch (err) {
     console.error("Attendance Automation Error:", err);
+    hideCaptureButton();
     abortCameraProcess(err.message || "Gagal mengambil foto dari kamera.");
   }
 }
 
 /**
- * Process camera capture step (unified for front and rear)
+ * Process camera capture step dengan manual click-to-capture
  * @param {number} stepNumber - Step number (1 or 2)
  * @param {string} facingMode - Camera facing mode ('user' or 'environment')
  * @param {string} stepTitle - Title to display
@@ -541,7 +639,7 @@ async function startAutomatedAttendance() {
  * @param {string} nim - User NIM
  */
 async function processCameraStep(stepNumber, facingMode, stepTitle, watermarkLabel, nama, nim) {
-  updateStatus('step-badge', `Langkah ${stepNumber}/2`);
+  updateStatus('step-badge', `Langkah ${stepNumber}/3`);
   updateStatus('step-title', stepTitle);
   
   const { 'overlay-guide-front': guideF, 'overlay-guide-rear': guideR } = getElements('overlay-guide-front', 'overlay-guide-rear');
@@ -559,12 +657,16 @@ async function processCameraStep(stepNumber, facingMode, stepTitle, watermarkLab
 
   await initializeVideoStream(videoElem, facingMode);
 
+  // Instruksi baru: Manual click-to-capture
   const instructionText = isFront 
-    ? "Tersenyum & Posisikan Wajah... (1.5 detik)" 
-    : "Arahkan ke Ruangan Acara... (1.5 detik)";
+    ? "📸 Posisikan Wajah Anda & Klik 'Ambil Foto'" 
+    : "📷 Arahkan ke Ruangan Acara & Klik 'Ambil Foto'";
   
   updateStatus('camera-status-text', instructionText);
-  await delay(CONFIG.CAMERA.DELAY_MS);
+  showCaptureButton();
+
+  // Tunggu user mengklik tombol "Ambil Foto"
+  await waitForCaptureClick();
 
   triggerFlashEffect();
   
@@ -576,6 +678,7 @@ async function processCameraStep(stepNumber, facingMode, stepTitle, watermarkLab
     rearImageBase64 = imageBase64;
   }
 
+  hideCaptureButton();
   stopCameraStream();
 }
 
@@ -590,6 +693,7 @@ async function processFlipDeviceCountdownStep() {
   if (!circleText) throw new Error('Countdown circle element not found');
   
   flipOverlay.classList.remove('hidden');
+  hideCaptureButton();
 
   for (let i = CONFIG.COUNTDOWN.START; i >= 1; i--) {
     circleText.innerText = i;
@@ -756,17 +860,26 @@ function resetAttendance() {
   if (previewFront) previewFront.src = '';
   if (previewRear) previewRear.src = '';
   
+  hideCaptureButton();
   showToast("Formulir disiapkan untuk presensi berikutnya.", "info");
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 /**
- * Fungsi Pengirim Payload Data ke Google Apps Script
+ * Fungsi Pengirim Payload Data ke Google Apps Script dengan Duplikasi Check
  * @param {Object} payload - Data to send
  */
 async function kirimKeGoogleSheets(payload) {
   if (!GOOGLE_WEB_APP_URL || GOOGLE_WEB_APP_URL === "TEMPEL_URL_APPS_SCRIPT_KAMU_DI_SINI") {
     showToast("⚠️ URL Apps Script belum dipasang!", "warning");
+    return;
+  }
+
+  // CEK DUPLIKASI - Jangan kirim jika presensi ganda terdeteksi
+  const isDuplicate = checkDuplicateAttendance(payload);
+  if (!isDuplicate) {
+    showToast("⚠️ Presensi ganda terdeteksi! Tunggu 5 menit sebelum presensi ulang.", "warning");
+    console.warn("Duplicate attendance detected - submission blocked", payload);
     return;
   }
 
@@ -783,6 +896,8 @@ async function kirimKeGoogleSheets(payload) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
+    // SIMPAN RECORD SETELAH SUKSES
+    saveAttendanceRecord(payload);
     showToast("✅ Absensi Berhasil Disimpan ke Spreadsheet!", "success");
   } catch (err) {
     console.error("Upload error:", err);
