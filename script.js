@@ -585,6 +585,60 @@ function waitForCaptureClick() {
   });
 }
 
+/**
+ * Show retake review modal with image preview
+ * @param {string} imageBase64 - Base64 encoded image to display
+ * @param {string} stepTitle - Title for the review modal
+ * @returns {Promise<boolean>} true if user accepts, false if wants to retake
+ */
+function showRetakeReviewModal(imageBase64, stepTitle) {
+  return new Promise((resolve) => {
+    const modal = getElement('retake-review-modal');
+    const previewImg = getElement('retake-preview-image');
+    const titleElem = getElement('retake-modal-title');
+    const nextBtn = getElement('retake-next-btn');
+    const retakeBtn = getElement('retake-photo-btn');
+
+    if (!modal || !previewImg || !nextBtn || !retakeBtn) {
+      console.error('Retake review modal elements not found');
+      resolve(true); // Default to accepting
+      return;
+    }
+
+    // Set content
+    if (titleElem) titleElem.innerText = stepTitle;
+    previewImg.src = imageBase64;
+
+    // Show modal
+    modal.classList.remove('hidden');
+
+    // Create one-time click handlers
+    const handleNext = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      nextBtn.removeEventListener('click', handleNext);
+      retakeBtn.removeEventListener('click', handleRetake);
+      modal.classList.add('hidden');
+      resolve(true);
+    };
+
+    const handleRetake = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      nextBtn.removeEventListener('click', handleNext);
+      retakeBtn.removeEventListener('click', handleRetake);
+      modal.classList.add('hidden');
+      showToast("📷 Silakan ambil ulang foto...", "info");
+      resolve(false);
+    };
+
+    nextBtn.addEventListener('click', handleNext, { once: false, passive: false });
+    retakeBtn.addEventListener('click', handleRetake, { once: false, passive: false });
+
+    console.debug('Retake review modal shown');
+  });
+}
+
 // ============================================================================
 // ATTENDANCE PROCESS STEPS
 // ============================================================================
@@ -661,7 +715,7 @@ async function startAutomatedAttendance() {
 }
 
 /**
- * Process camera capture step dengan manual click-to-capture
+ * Process camera capture step dengan manual click-to-capture dan retake review
  * @param {number} stepNumber - Step number (1 or 2)
  * @param {string} facingMode - Camera facing mode ('user' or 'environment')
  * @param {string} stepTitle - Title to display
@@ -670,50 +724,63 @@ async function startAutomatedAttendance() {
  * @param {string} nim - User NIM
  */
 async function processCameraStep(stepNumber, facingMode, stepTitle, watermarkLabel, nama, nim) {
-  updateStatus('step-badge', `Langkah ${stepNumber}/3`);
-  updateStatus('step-title', stepTitle);
+  let photoAccepted = false;
   
-  const { 'overlay-guide-front': guideF, 'overlay-guide-rear': guideR } = getElements('overlay-guide-front', 'overlay-guide-rear');
-  
-  // Show appropriate guide
-  const isFront = facingMode === 'user';
-  if (guideF) guideF.classList.toggle('hidden', !isFront);
-  if (guideR) guideR.classList.toggle('hidden', isFront);
+  while (!photoAccepted) {
+    updateStatus('step-badge', `Langkah ${stepNumber}/3`);
+    updateStatus('step-title', stepTitle);
+    
+    const { 'overlay-guide-front': guideF, 'overlay-guide-rear': guideR } = getElements('overlay-guide-front', 'overlay-guide-rear');
+    
+    // Show appropriate guide
+    const isFront = facingMode === 'user';
+    if (guideF) guideF.classList.toggle('hidden', !isFront);
+    if (guideR) guideR.classList.toggle('hidden', isFront);
 
-  const cameraLabel = isFront ? "Depan" : "Belakang";
-  updateStatus('camera-status-text', `Membuka Kamera ${cameraLabel}...`);
+    const cameraLabel = isFront ? "Depan" : "Belakang";
+    updateStatus('camera-status-text', `Membuka Kamera ${cameraLabel}...`);
 
-  const videoElem = getElement('camera-video');
-  if (!videoElem) throw new Error('Camera video element not found');
+    const videoElem = getElement('camera-video');
+    if (!videoElem) throw new Error('Camera video element not found');
 
-  await initializeVideoStream(videoElem, facingMode);
+    await initializeVideoStream(videoElem, facingMode);
 
-  // Instruksi baru: Manual click-to-capture
-  const instructionText = isFront 
-    ? "📸 Posisikan Wajah Anda & Klik 'Ambil Foto'" 
-    : "📷 Arahkan ke Ruangan Acara & Klik 'Ambil Foto'";
-  
-  updateStatus('camera-status-text', instructionText);
-  
-  // Show capture button and wait a bit for it to render
-  showCaptureButton();
-  await delay(100);
+    // Instruksi baru: Manual click-to-capture
+    const instructionText = isFront 
+      ? "📸 Posisikan Wajah Anda & Klik 'Ambil Foto'" 
+      : "📷 Arahkan ke Ruangan Acara & Klik 'Ambil Foto'";
+    
+    updateStatus('camera-status-text', instructionText);
+    
+    // Show capture button and wait a bit for it to render
+    showCaptureButton();
+    await delay(100);
 
-  // Tunggu user mengklik tombol "Ambil Foto"
-  await waitForCaptureClick();
+    // Tunggu user mengklik tombol "Ambil Foto"
+    await waitForCaptureClick();
 
-  triggerFlashEffect();
-  
-  const imageBase64 = captureVideoFrame(videoElem, watermarkLabel, nama, nim);
-  
-  if (isFront) {
-    frontImageBase64 = imageBase64;
-  } else {
-    rearImageBase64 = imageBase64;
+    triggerFlashEffect();
+    
+    const imageBase64 = captureVideoFrame(videoElem, watermarkLabel, nama, nim);
+    
+    hideCaptureButton();
+    stopCameraStream();
+
+    // Show retake review modal
+    const reviewTitle = isFront ? "Tinjau Foto Selfie" : "Tinjau Foto Suasana Acara";
+    photoAccepted = await showRetakeReviewModal(imageBase64, reviewTitle);
+
+    if (photoAccepted) {
+      // Save the image
+      if (isFront) {
+        frontImageBase64 = imageBase64;
+      } else {
+        rearImageBase64 = imageBase64;
+      }
+      showToast("✅ Foto diterima!", "success");
+    }
+    // If not accepted, loop back to take photo again
   }
-
-  hideCaptureButton();
-  stopCameraStream();
 }
 
 /**
@@ -736,9 +803,10 @@ async function processFlipDeviceCountdownStep() {
  */
 function abortCameraProcess(reasonMsg) {
   stopCameraStream();
-  const { 'camera-modal': modal, 'flip-countdown-overlay': flip } = getElements('camera-modal', 'flip-countdown-overlay');
+  const { 'camera-modal': modal, 'flip-countdown-overlay': flip, 'retake-review-modal': retakeModal } = getElements('camera-modal', 'flip-countdown-overlay', 'retake-review-modal');
   if (modal) modal.classList.add('hidden');
   if (flip) flip.classList.add('hidden');
+  if (retakeModal) retakeModal.classList.add('hidden');
   showToast(reasonMsg, "error");
 }
 
