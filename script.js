@@ -1,33 +1,3 @@
-tailwind.config = {
-  theme: {
-    extend: {
-      colors: {
-        brand: {
-          50: '#eef2ff',
-          100: '#e0e7ff',
-          500: '#6366f1',
-          600: '#4f46e5',
-          700: '#4338ca',
-        },
-        accent: {
-          500: '#10b981',
-          600: '#059669',
-        }
-      },
-      animation: {
-        'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-        'radar': 'radar 2s linear infinite',
-      },
-      keyframes: {
-        radar: {
-          '0%': { transform: 'scale(0.8)', opacity: '0.8' },
-          '100%': { transform: 'scale(2.2)', opacity: '0' }
-        }
-      }
-    }
-  }
-}
-
 const GOOGLE_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbw5rDKh7eQxCD2W3VnjNg_7UQw0sggoCbRVlVtegGCHMZYGzNo9aX_1spHomuEWTmtD/exec";
 
 // ============================================================================
@@ -338,10 +308,14 @@ function requestPermissions() {
  */
 function checkDuplicateAttendance(payload) {
   const storedRecords = JSON.parse(localStorage.getItem('attendanceHistory') || '[]');
+  const currentTime = new Date(payload.isoWaktu || payload.waktu).getTime();
   
+  if (isNaN(currentTime)) return true;
+
   const isDuplicate = storedRecords.some(record => {
-    const recordTime = new Date(record.waktu);
-    const currentTime = new Date(payload.waktu);
+    const recordTime = new Date(record.isoWaktu || record.waktu).getTime();
+    if (isNaN(recordTime)) return false;
+    
     const timeDiff = Math.abs(currentTime - recordTime) / (1000 * 60); // dalam menit
     
     return record.nama === payload.nama && 
@@ -361,7 +335,8 @@ function saveAttendanceRecord(payload) {
   records.push({
     nama: payload.nama,
     nim: payload.nim,
-    waktu: payload.waktu
+    waktu: payload.waktu,
+    isoWaktu: payload.isoWaktu
   });
   
   // Simpan hanya 100 record terakhir untuk menghemat storage
@@ -727,7 +702,10 @@ async function processCameraStep(stepNumber, facingMode, stepTitle, watermarkLab
   let photoAccepted = false;
   
   while (!photoAccepted) {
-    updateStatus('step-badge', `Langkah ${stepNumber}/3`);
+    // Stop any active camera stream before restarting (fixes hardware locks)
+    stopCameraStream();
+
+    updateStatus('step-badge', `Langkah ${stepNumber}/2`);
     updateStatus('step-title', stepTitle);
     
     const { 'overlay-guide-front': guideF, 'overlay-guide-rear': guideR } = getElements('overlay-guide-front', 'overlay-guide-rear');
@@ -745,7 +723,7 @@ async function processCameraStep(stepNumber, facingMode, stepTitle, watermarkLab
 
     await initializeVideoStream(videoElem, facingMode);
 
-    // Instruksi baru: Manual click-to-capture
+    // Instruksi manual click-to-capture
     const instructionText = isFront 
       ? "📸 Posisikan Wajah Anda & Klik 'Ambil Foto'" 
       : "📷 Arahkan ke Ruangan Acara & Klik 'Ambil Foto'";
@@ -793,6 +771,12 @@ async function processFlipDeviceCountdownStep() {
   flipOverlay.classList.remove('hidden');
   hideCaptureButton();
 
+  for (let i = CONFIG.COUNTDOWN.START; i > 0; i--) {
+    updateStatus('countdown-circle', i);
+    playAudioBeep(CONFIG.AUDIO.COUNTDOWN_FREQ, CONFIG.AUDIO.COUNTDOWN_TYPE, CONFIG.AUDIO.COUNTDOWN_DURATION);
+    await delay(CONFIG.COUNTDOWN.INTERVAL);
+  }
+
   playAudioBeep(CONFIG.AUDIO.DONE_FREQ, CONFIG.AUDIO.BEEP_TYPE, CONFIG.AUDIO.DONE_DURATION);
   flipOverlay.classList.add('hidden');
 }
@@ -826,6 +810,7 @@ async function finishAttendanceProcess(nama, nim) {
   attendanceData = {
     nama: nama,
     nim: nim,
+    isoWaktu: timestamp,
     waktu: new Date(timestamp).toLocaleString('id-ID'),
     lokasi: {
       lat: currentGPS?.latitude ?? 0,
@@ -902,12 +887,10 @@ async function copyJSONData() {
   const fullJSONStr = JSON.stringify(attendanceData, null, 2);
   
   try {
-    // Try modern Clipboard API first
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(fullJSONStr);
       showToast("Seluruh JSON Data berhasil disalin ke Clipboard!", "success");
     } else {
-      // Fallback for non-secure contexts
       fallbackCopyToClipboard(fullJSONStr);
     }
   } catch (err) {

@@ -5,9 +5,39 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Absensi Peserta Acara</title>
   
-  <!-- Tailwind CSS CDN -->
+  <!-- Tailwind CSS Configuration & CDN -->
+  <script>
+    tailwind = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            },
+            accent: {
+              500: '#10b981',
+              600: '#059669',
+            }
+          },
+          animation: {
+            'pulse-fast': 'pulse 1s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            'radar': 'radar 2s linear infinite',
+          },
+          keyframes: {
+            radar: {
+              '0%': { transform: 'scale(0.8)', opacity: '0.8' },
+              '100%': { transform: 'scale(2.2)', opacity: '0' }
+            }
+          }
+        }
+      }
+    };
+  </script>
   <script src="https://cdn.tailwindcss.com"></script>
-  
 
   <!-- Font Awesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
@@ -17,7 +47,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
 
-  
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="h-full bg-slate-950 text-slate-100 flex flex-col justify-between selection:bg-brand-500 selection:text-white">
@@ -284,6 +313,24 @@
     </div>
   </div>
 
+  <!-- RETAKE REVIEW MODAL OVERLAY -->
+  <div id="retake-review-modal" class="fixed inset-0 z-50 bg-slate-950/95 backdrop-blur-lg flex flex-col items-center justify-center p-4 hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-4 space-y-4 shadow-2xl text-center">
+      <h3 id="retake-modal-title" class="text-base font-bold text-white">Tinjau Foto</h3>
+      <div class="relative aspect-[3/4] bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+        <img id="retake-preview-image" class="w-full h-full object-cover" src="" alt="Tinjau Foto" />
+      </div>
+      <div class="flex gap-2">
+        <button id="retake-photo-btn" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+          <i class="fa-solid fa-rotate-left"></i> Foto Ulang
+        </button>
+        <button id="retake-next-btn" class="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition">
+          <i class="fa-solid fa-check"></i> Lanjutkan
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- JSON MODAL INSPECTOR -->
   <div id="json-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 hidden">
     <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-4 space-y-3 shadow-2xl">
@@ -314,7 +361,6 @@
   <!-- Hidden Canvas for Snapshot Capture & Watermarking -->
   <canvas id="capture-canvas" class="hidden"></canvas>
 
-  
   <script src="script.js"></script>
 </body>
 </html>
