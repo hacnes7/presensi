@@ -506,14 +506,24 @@ async function initializeVideoStream(videoElem, facingMode) {
 }
 
 /**
- * Tampilkan tombol "Ambil Foto"
+ * Tampilkan tombol "Ambil Foto" dengan proper state reset
  */
 function showCaptureButton() {
   const captureBtn = getElement('capture-photo-btn');
   if (captureBtn) {
-    captureBtn.style.display = 'block';
+    // Reset button state
     captureBtn.disabled = false;
     captureBtn.innerText = "📷 Ambil Foto";
+    captureBtn.style.display = 'block';
+    // Ensure visibility in DOM
+    captureBtn.classList.remove('hidden');
+    
+    // Force reflow to ensure rendering
+    void captureBtn.offsetHeight;
+    
+    console.debug('Capture button shown and ready');
+  } else {
+    console.error('Capture button element not found');
   }
 }
 
@@ -524,33 +534,54 @@ function hideCaptureButton() {
   const captureBtn = getElement('capture-photo-btn');
   if (captureBtn) {
     captureBtn.style.display = 'none';
+    captureBtn.classList.add('hidden');
   }
 }
 
 /**
- * Tunggu user mengklik tombol "Ambil Foto"
+ * Tunggu user mengklik tombol "Ambil Foto" dengan improved reliability
  * @returns {Promise<void>}
  */
 function waitForCaptureClick() {
   return new Promise((resolve) => {
     const captureBtn = getElement('capture-photo-btn');
     if (!captureBtn) {
-      console.error('Capture button not found');
+      console.error('Capture button not found - resolving immediately');
       resolve();
       return;
     }
 
-    const handleClick = () => {
-      captureBtn.removeEventListener('click', handleClick);
+    // Ensure button is enabled and ready
+    captureBtn.disabled = false;
+    captureBtn.style.pointerEvents = 'auto';
+
+    let clickHandler = null;
+    
+    const handleClick = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      console.debug('Capture button clicked');
+      
+      // Remove listener immediately
+      if (clickHandler) {
+        captureBtn.removeEventListener('click', clickHandler);
+      }
+      
       captureBtn.disabled = true;
       captureBtn.innerText = "⏳ Menyimpan...";
+      captureBtn.style.pointerEvents = 'none';
       
+      // Give feedback that click was registered
       setTimeout(() => {
         resolve();
-      }, 500);
+      }, 300);
     };
 
-    captureBtn.addEventListener('click', handleClick);
+    clickHandler = handleClick;
+    captureBtn.addEventListener('click', clickHandler, { once: false, passive: false });
+    
+    console.debug('Click listener attached, awaiting user click');
   });
 }
 
@@ -663,7 +694,10 @@ async function processCameraStep(stepNumber, facingMode, stepTitle, watermarkLab
     : "📷 Arahkan ke Ruangan Acara & Klik 'Ambil Foto'";
   
   updateStatus('camera-status-text', instructionText);
+  
+  // Show capture button and wait a bit for it to render
   showCaptureButton();
+  await delay(100);
 
   // Tunggu user mengklik tombol "Ambil Foto"
   await waitForCaptureClick();
